@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { readFile, createWriteStream, lstatSync, readdirSync } from 'fs';
+import {
+  readFile,
+  createWriteStream,
+  lstatSync,
+  readdirSync,
+  readFileSync
+} from 'fs';
 import { Map } from 'immutable';
 
 import { argv } from './yargs_config';
@@ -140,12 +146,30 @@ function getNpmDirectories(directories: string[]): string[] {
   return npmDirecories;
 }
 
-function createMegaCSV(dir: string[]): void {
-  if (dir.length === 0) {
+function createMegaCSV(dirs: string[]): void {
+  if (dirs.length === 0) {
     throw new Error('There are no valid npm directories in this directory.');
   }
+  const megaCSV: string[][] = [];
 
-  console.log(dir);
+  dirs.forEach(dir => {
+    const jsonContent: string = readFileSync(
+      `${process.cwd()}/${dir}/package.json`,
+      'utf8'
+    );
+    const parsedJsonContent = JSON.parse(jsonContent);
+    megaCSV.push(
+      Object.keys(
+        Object.assign(
+          {},
+          parsedJsonContent.dependencies,
+          parsedJsonContent.devDependencies,
+          parsedJsonContent.peerDependencies
+        )
+      )
+    );
+  });
+  console.log(megaCSV);
 }
 
 switch (argv._[0]) {
