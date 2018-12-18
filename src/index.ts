@@ -61,23 +61,21 @@ async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
     repoData.push(mappedJson.get('version'));
     repoData.push(mappedJson.get('license'));
     const author = mappedJson.get('author', '');
-    if (typeof author === 'string') {
-      repoData.push(author)
-    } else {
+    if (typeof author !== 'string') {
       repoData.push(author['name'])
+    } else {
+      repoData.push(author)
     }
     const repo = mappedJson.get('repository', '');
     if (typeof repo !== 'string') {
       repoData.push(repo['url'])
+    } else {
+      repoData.push(repo)
     }
+    repoData.push(mappedJson.get('description'))
     cumulativeData.push(repoData);
   })
   return cumulativeData;
 }
 
 createArrayWithRepoData('package.json').then(res => console.log(res))
-
-// getFileContent('package.json')
-//   .then((res: string): Map<string, JSONObject> => Map(JSON.parse(res)))
-//   .then((res): Array<string> => extractDependencies(res))
-//   .then(res => console.log(res[0]));
