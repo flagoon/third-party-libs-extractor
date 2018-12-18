@@ -3,7 +3,7 @@
 import { readFile, createWriteStream } from 'fs';
 import { Map } from 'immutable';
 
-import { argv } from "./yargs_config"
+import { argv } from './yargs_config';
 
 type JSONValue = string | number | boolean | JSONObject;
 
@@ -16,7 +16,9 @@ function getFileContent(file: string): Promise<string> {
     readFile(file, 'utf8', (err: Error, data: string) => {
       if (err)
         reject(
-          new Error(`There was an error while reading file ${file}. Probably package.json for this project doesn't exists. Try npm i before using the lib again`)
+          new Error(
+            `There was an error while reading file ${file}. Probably package.json for this project doesn't exists. Try npm i before using the lib again`
+          )
         );
       else {
         resolve(data);
@@ -33,14 +35,14 @@ async function extractDependencies(from: string): Promise<Array<string>> {
   const dependencies = fileContent.get('dependencies');
   const devDependencies = fileContent.get('devDependencies');
   const peerDependencies = fileContent.get('peerDependencies');
-  return Object.keys(Object.assign({}, dependencies, devDependencies, peerDependencies));
+  return Object.keys(
+    Object.assign({}, dependencies, devDependencies, peerDependencies)
+  );
 }
 
 async function prepareDependenciesData(from: string): Promise<Array<string>> {
   // TODO: add try catch
-  const projectDependencies: Array<string> = await extractDependencies(
-    from
-  );
+  const projectDependencies: Array<string> = await extractDependencies(from);
   const libData: Array<Promise<string>> = [];
   projectDependencies.forEach(dependency => {
     libData.push(getFileContent(`node_modules/${dependency}/package.json`));
@@ -60,34 +62,36 @@ async function convertLibDataToImmutable(
 }
 
 async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
-  const arrayOfMappedJsons: Array<Map<string, JSONObject>> = await convertLibDataToImmutable(prepareDependenciesData(from));
+  const arrayOfMappedJsons: Array<
+    Map<string, JSONObject>
+  > = await convertLibDataToImmutable(prepareDependenciesData(from));
   const cumulativeData: JSONValue[][] = [];
   arrayOfMappedJsons.forEach(mappedJson => {
     const repoData: JSONValue[] = [];
-    repoData.push(mappedJson.get('name'))
+    repoData.push(mappedJson.get('name'));
     repoData.push(mappedJson.get('version'));
     repoData.push(mappedJson.get('license'));
     const author = mappedJson.get('author', '');
     if (typeof author !== 'string') {
-      repoData.push(author['name'])
+      repoData.push(author['name']);
     } else {
-      repoData.push(author)
+      repoData.push(author);
     }
     const repo = mappedJson.get('repository', '');
     if (typeof repo !== 'string') {
-      repoData.push(repo['url'])
+      repoData.push(repo['url']);
     } else {
-      repoData.push(repo)
+      repoData.push(repo);
     }
-    repoData.push(mappedJson.get('description'))
+    repoData.push(mappedJson.get('description'));
     if (argv.team) {
-      repoData.push(argv.team)
+      repoData.push(argv.team);
     }
     if (argv.used) {
-      repoData.push(argv.used)
+      repoData.push(argv.used);
     }
     cumulativeData.push(repoData);
-  })
+  });
   return cumulativeData;
 }
 
@@ -97,9 +101,9 @@ function saveToFile(librariesData: JSONValue[][]) {
     let stringData = '';
     libraryData.forEach(libraryValue => {
       stringData += libraryValue + ';';
-    })
+    });
     stream.write(stringData + '\n');
-  })
+  });
   stream.end();
 }
 
@@ -107,7 +111,7 @@ switch (argv._[0]) {
   case 'single':
     createArrayWithRepoData('package.json')
       .then(librariesData => saveToFile(librariesData))
-      .catch(err => console.log(err.message))
+      .catch(err => console.log(err.message));
     break;
   case 'multi':
     console.log(argv._[0], argv.team, argv.used);
