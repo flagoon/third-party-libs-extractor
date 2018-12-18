@@ -98,7 +98,7 @@ function saveToFile(librariesData: JSONValue[][]) {
     libraryData.forEach(libraryValue => {
       stringData += libraryValue + ';';
     })
-    stream.write(stringData+'\n');
+    stream.write(stringData + '\n');
   })
   stream.end();
 }
