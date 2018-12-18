@@ -1,5 +1,9 @@
-import { readFile } from 'fs';
+#!/usr/bin/env node
+
+import { readFile, createWriteStream } from 'fs';
 import { Map } from 'immutable';
+
+import { argv } from "./yargs_config"
 
 type JSONValue = string | number | boolean | JSONObject;
 
@@ -11,7 +15,9 @@ function getFileContent(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     readFile(file, 'utf8', (err: Error, data: string) => {
       if (err)
-        reject(new Error(`There was an error while reading file ${file}`));
+        reject(
+          new Error(`There was an error while reading file ${file}. Probably package.json for this project doesn't exists. Try npm i before using the lib again`)
+        );
       else {
         resolve(data);
       }
@@ -26,7 +32,8 @@ async function extractDependencies(from: string): Promise<Array<string>> {
 
   const dependencies = fileContent.get('dependencies');
   const devDependencies = fileContent.get('devDependencies');
-  return Object.keys(Object.assign({}, dependencies, devDependencies));
+  const peerDependencies = fileContent.get('peerDependencies');
+  return Object.keys(Object.assign({}, dependencies, devDependencies, peerDependencies));
 }
 
 async function prepareDependenciesData(from: string): Promise<Array<string>> {
@@ -73,9 +80,38 @@ async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
       repoData.push(repo)
     }
     repoData.push(mappedJson.get('description'))
+    if (argv.team) {
+      repoData.push(argv.team)
+    }
+    if (argv.used) {
+      repoData.push(argv.used)
+    }
     cumulativeData.push(repoData);
   })
   return cumulativeData;
 }
 
-createArrayWithRepoData('package.json').then(res => console.log(res))
+function saveToFile(librariesData: JSONValue[][]) {
+  const stream = createWriteStream('test.csv');
+  librariesData.forEach(libraryData => {
+    let stringData = '';
+    libraryData.forEach(libraryValue => {
+      stringData += libraryValue + ';';
+    })
+    stream.write(stringData+'\n');
+  })
+  stream.end();
+}
+
+switch (argv._[0]) {
+  case 'single':
+    createArrayWithRepoData('package.json')
+      .then(librariesData => saveToFile(librariesData))
+      .catch(err => console.log(err.message))
+    break;
+  case 'multi':
+    console.log(argv._[0], argv.team, argv.used);
+    break;
+  default:
+    argv.showHelp();
+}
