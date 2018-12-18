@@ -20,8 +20,10 @@
     "tslint": "^5.11.0",
     "typescript": "^3.2.2"
   },
+  "bin": {
+    "libex": "./dist/index.js"
+  },
   "dependencies": {
-    "@types/immutable": "^3.8.7",
     "immutable": "^4.0.0-rc.12",
     "yargs": "^12.0.5"
   }
