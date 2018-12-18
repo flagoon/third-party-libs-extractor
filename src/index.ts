@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile, createWriteStream } from 'fs';
+import { readFile, createWriteStream, lstatSync, readdirSync } from 'fs';
 import { Map } from 'immutable';
 
 import { argv } from './yargs_config';
@@ -35,6 +35,7 @@ async function extractDependencies(from: string): Promise<Array<string>> {
   const dependencies = fileContent.get('dependencies');
   const devDependencies = fileContent.get('devDependencies');
   const peerDependencies = fileContent.get('peerDependencies');
+
   return Object.keys(
     Object.assign({}, dependencies, devDependencies, peerDependencies)
   );
@@ -47,6 +48,7 @@ async function prepareDependenciesData(from: string): Promise<Array<string>> {
   projectDependencies.forEach(dependency => {
     libData.push(getFileContent(`node_modules/${dependency}/package.json`));
   });
+
   return Promise.all(libData);
 }
 
@@ -58,6 +60,7 @@ async function convertLibDataToImmutable(
   listsOfJsons.forEach(mappedJson => {
     arrayOfMappedJsons.push(Map(JSON.parse(mappedJson)));
   });
+
   return arrayOfMappedJsons;
 }
 
@@ -92,10 +95,11 @@ async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
     }
     cumulativeData.push(repoData);
   });
+
   return cumulativeData;
 }
 
-function saveToFile(librariesData: JSONValue[][]) {
+function saveToFile(librariesData: JSONValue[][]): void {
   const stream = createWriteStream('test.csv');
   librariesData.forEach(libraryData => {
     let stringData = '';
@@ -107,6 +111,43 @@ function saveToFile(librariesData: JSONValue[][]) {
   stream.end();
 }
 
+function getDirectories(): string[] {
+  const directoryContent: string[] = readdirSync(process.cwd());
+  const directories = directoryContent.filter(directoryElement =>
+    lstatSync(`${process.cwd()}/${directoryElement}`).isDirectory()
+  );
+
+  return directories;
+}
+
+function verifyDirectory(directory: string): boolean {
+  const directoryContent: string[] = readdirSync(
+    `${process.cwd()}/${directory}`
+  );
+
+  if (directoryContent.indexOf('package.json') !== -1) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function getNpmDirectories(directories: string[]): string[] {
+  const npmDirecories = directories.filter(directory =>
+    verifyDirectory(directory)
+  );
+
+  return npmDirecories;
+}
+
+function createMegaCSV(dir: string[]): void {
+  if (dir.length === 0) {
+    throw new Error('There are no valid npm directories in this directory.');
+  }
+
+  console.log(dir);
+}
+
 switch (argv._[0]) {
   case 'single':
     createArrayWithRepoData('package.json')
@@ -114,7 +155,12 @@ switch (argv._[0]) {
       .catch(err => console.log(err.message));
     break;
   case 'multi':
-    console.log(argv._[0], argv.team, argv.used);
+    const validDirs = getNpmDirectories(getDirectories());
+    try {
+      createMegaCSV(validDirs);
+    } catch (err) {
+      console.log(err.message);
+    }
     break;
   default:
     argv.showHelp();
