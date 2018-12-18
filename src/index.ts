@@ -4,7 +4,7 @@ import { Map } from 'immutable';
 type JSONValue = string | number | boolean | JSONObject;
 
 interface JSONObject {
-  [x: string]: JSONValue;
+  [key: string]: JSONValue;
 }
 
 function getFileContent(file: string): Promise<string> {
@@ -29,10 +29,10 @@ async function extractDependencies(from: string): Promise<Array<string>> {
   return Object.keys(Object.assign({}, dependencies, devDependencies));
 }
 
-async function prepareDependenciesData(): Promise<Array<string>> {
+async function prepareDependenciesData(from: string): Promise<Array<string>> {
   // TODO: add try catch
   const projectDependencies: Array<string> = await extractDependencies(
-    'package.json'
+    from
   );
   const libData: Array<Promise<string>> = [];
   projectDependencies.forEach(dependency => {
@@ -41,20 +41,41 @@ async function prepareDependenciesData(): Promise<Array<string>> {
   return Promise.all(libData);
 }
 
-async function convertLibDataToMap(
+async function convertLibDataToImmutable(
   libData: Promise<Array<string>>
 ): Promise<Array<Map<string, JSONObject>>> {
-  const x = await libData;
-  const y: Array<Map<string, JSONObject>> = [];
-  x.forEach(z => {
-    y.push(Map(JSON.parse(z)));
+  const listsOfJsons = await libData;
+  const arrayOfMappedJsons: Array<Map<string, JSONObject>> = [];
+  listsOfJsons.forEach(mappedJson => {
+    arrayOfMappedJsons.push(Map(JSON.parse(mappedJson)));
   });
-  return y;
+  return arrayOfMappedJsons;
 }
 
-convertLibDataToMap(prepareDependenciesData()).then(res =>
-  console.log(res[0].get('version'))
-);
+async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
+  const arrayOfMappedJsons: Array<Map<string, JSONObject>> = await convertLibDataToImmutable(prepareDependenciesData(from));
+  const cumulativeData: JSONValue[][] = [];
+  arrayOfMappedJsons.forEach(mappedJson => {
+    const repoData: JSONValue[] = [];
+    repoData.push(mappedJson.get('name'))
+    repoData.push(mappedJson.get('version'));
+    repoData.push(mappedJson.get('license'));
+    const author = mappedJson.get('author', '');
+    if (typeof author === 'string') {
+      repoData.push(author)
+    } else {
+      repoData.push(author['name'])
+    }
+    const repo = mappedJson.get('repository', '');
+    if (typeof repo !== 'string') {
+      repoData.push(repo['url'])
+    }
+    cumulativeData.push(repoData);
+  })
+  return cumulativeData;
+}
+
+createArrayWithRepoData('package.json').then(res => console.log(res))
 
 // getFileContent('package.json')
 //   .then((res: string): Map<string, JSONObject> => Map(JSON.parse(res)))
