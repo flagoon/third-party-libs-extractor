@@ -11,10 +11,13 @@ import { Map } from 'immutable';
 
 import { argv } from './yargs_config';
 
-type JSONValue = string | number | boolean | JSONObject;
+type JSONValue = string | Array<string> | JSONObject;
 
 interface JSONObject {
   [key: string]: JSONValue;
+  appsNames?: string[];
+  usedIn?: string[];
+  version?: string;
 }
 
 function getFileContent(file: string): Promise<string> {
@@ -117,6 +120,27 @@ function saveToFile(librariesData: JSONValue[][]): void {
   stream.end();
 }
 
+function saveMappedDataToFile(mappedData: Map<string, JSONObject>): void {
+  const stream = createWriteStream('multi.csv');
+  const libraries = [...mappedData.keys()];
+  libraries.forEach(library => {
+    const mappedKeys: JSONObject = mappedData.get(library);
+    const mappedValues = Object.keys(mappedKeys).map(value => mappedKeys[value]);
+    let stringData = `${library}; `;
+    let stringToAdd = '';
+    mappedValues.forEach(mappedValue => {
+      if (typeof mappedValue === 'string') {
+        stringToAdd = mappedValue;
+      } else {
+        stringToAdd = JSON.stringify(mappedValue)
+      }
+      stringData += stringToAdd + '; ';
+    })
+    stream.write(stringData + '\n');
+  })
+  stream.end();
+}
+
 function getDirectories(): string[] {
   const directoryContent: string[] = readdirSync(process.cwd());
   const directories = directoryContent.filter(directoryElement =>
@@ -146,11 +170,11 @@ function getNpmDirectories(directories: string[]): string[] {
   return npmDirecories;
 }
 
-function createMegaCSV(dirs: string[]): void {
+function createMapWithDependencies(dirs: string[]): Map<string, string[]> {
   if (dirs.length === 0) {
-    throw new Error('There are no valid npm directories in this directory.');
+    throw new Error('There are no valid npm directories in this directory. Do you mean libex single command?');
   }
-  const megaCSV: string[][] = [];
+  let megaMapWithDependencies: Map<string, string[]> = Map({});
 
   dirs.forEach(dir => {
     const jsonContent: string = readFileSync(
@@ -158,22 +182,53 @@ function createMegaCSV(dirs: string[]): void {
       'utf8'
     );
     const parsedJsonContent = JSON.parse(jsonContent);
-    megaCSV.push(
-      Object.keys(
-        Object.assign(
-          {},
-          parsedJsonContent.dependencies,
-          parsedJsonContent.devDependencies,
-          parsedJsonContent.peerDependencies
-        )
-      )
-    );
+    const arrayOfDependencies: string[] = Object.keys(Object.assign(
+      {},
+      parsedJsonContent.dependencies,
+      parsedJsonContent.devDependencies,
+      parsedJsonContent.peerDependencies
+    ))
+    megaMapWithDependencies = megaMapWithDependencies.set(dir, arrayOfDependencies)
   });
-  console.log(megaCSV);
+  return megaMapWithDependencies;
+}
+
+function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Map<string, JSONObject> {
+  let megaCSVGenerator: Map<string, JSONObject> = Map({});
+  const appsNames = [...mappedDirectories.keys()];
+  appsNames.forEach(app => {
+    const dependencies = mappedDirectories.get(app);
+    dependencies.forEach(dependency => {
+      const packageJsonContent = readFileSync(`${process.cwd()}/${app}/node_modules/${dependency}/package.json`, 'utf8');
+      const parsedPJC = JSON.parse(packageJsonContent);
+      const dependencyData: JSONObject = {
+        version: parsedPJC.version,
+        author: parsedPJC.author || '',
+        team: argv.team || '',
+        repo: parsedPJC.repository || '',
+        license: parsedPJC.license || 'XXXXXXXXX',
+        description: parsedPJC.description || '',
+        used: argv.used || '',
+        usedIn: [app]
+      };
+      if (megaCSVGenerator.has(dependency)) {
+        const changedDependency: JSONObject = megaCSVGenerator.get(dependency)
+        if (changedDependency.version < parsedPJC.version) {
+          changedDependency.version = parsedPJC.version;
+        }
+        changedDependency.usedIn.push(app);
+        megaCSVGenerator = megaCSVGenerator.set(dependency, changedDependency);
+      } else {
+        megaCSVGenerator = megaCSVGenerator.set(dependency, dependencyData);
+      }
+    })
+  })
+  return megaCSVGenerator;
 }
 
 switch (argv._[0]) {
   case 'single':
+  console.log(process.cwd())
     createArrayWithRepoData('package.json')
       .then(librariesData => saveToFile(librariesData))
       .catch(err => console.log(err.message));
@@ -181,7 +236,9 @@ switch (argv._[0]) {
   case 'multi':
     const validDirs = getNpmDirectories(getDirectories());
     try {
-      createMegaCSV(validDirs);
+      const dependenciesInApps = createMapWithDependencies(validDirs);
+      const mapOfLibrariesWithData = getMapOfLibrariesWithData(dependenciesInApps);
+      saveMappedDataToFile(mapOfLibrariesWithData);
     } catch (err) {
       console.log(err.message);
     }
