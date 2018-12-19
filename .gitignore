@@ -1,3 +1,4 @@
 node_modules/
 dist/
 package_old.json
+.vscode/
