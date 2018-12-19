@@ -18,6 +18,7 @@ interface JSONObject {
   appsNames?: string[];
   usedIn?: string[];
   version?: string;
+  name?: JSONValue;
 }
 
 function getFileContent(file: string): Promise<string> {
@@ -109,7 +110,7 @@ async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
 }
 
 function saveToFile(librariesData: JSONValue[][]): void {
-  const stream = createWriteStream('test.csv');
+  const stream = createWriteStream('single.csv');
   librariesData.forEach(libraryData => {
     let stringData = '';
     libraryData.forEach(libraryValue => {
@@ -190,7 +191,21 @@ function createMapWithDependencies(dirs: string[]): Map<string, string[]> {
     ))
     megaMapWithDependencies = megaMapWithDependencies.set(dir, arrayOfDependencies)
   });
+
   return megaMapWithDependencies;
+}
+
+function handleComplexValues(value: any, key: string): string {
+  let newValue = '';
+  if (value) {
+    if (typeof value === 'string') {
+      newValue = value;
+    } else {
+      newValue = value['key'] || '';
+    }
+  }
+
+  return newValue;
 }
 
 function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Map<string, JSONObject> {
@@ -203,9 +218,9 @@ function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Ma
       const parsedPJC = JSON.parse(packageJsonContent);
       const dependencyData: JSONObject = {
         version: parsedPJC.version,
-        author: parsedPJC.author || '',
+        author: handleComplexValues(parsedPJC.author, 'name'),
         team: argv.team || '',
-        repo: parsedPJC.repository || '',
+        repo: handleComplexValues(parsedPJC.repository, 'url'),
         license: parsedPJC.license || 'XXXXXXXXX',
         description: parsedPJC.description || '',
         used: argv.used || '',
@@ -228,10 +243,10 @@ function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Ma
 
 switch (argv._[0]) {
   case 'single':
-  console.log(process.cwd())
     createArrayWithRepoData('package.json')
       .then(librariesData => saveToFile(librariesData))
       .catch(err => console.log(err.message));
+    console.log(`It's done!`);
     break;
   case 'multi':
     const validDirs = getNpmDirectories(getDirectories());
@@ -242,6 +257,7 @@ switch (argv._[0]) {
     } catch (err) {
       console.log(err.message);
     }
+    console.log(`It's done!`);
     break;
   default:
     argv.showHelp();
