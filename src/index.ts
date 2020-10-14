@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
-import {
-  readFile,
-  createWriteStream,
-  lstatSync,
-  readdirSync,
-  readFileSync
-} from 'fs';
+import { readFile, createWriteStream, lstatSync, readdirSync, readFileSync } from 'fs';
+import path, { dirname } from 'path';
 import { Map } from 'immutable';
-
 import { argv } from './yargs_config';
+import execa from 'execa';
+import { execSync } from 'child_process';
 
 type JSONValue = string | Array<string> | JSONObject;
 
@@ -43,12 +39,10 @@ async function extractDependencies(from: string): Promise<Array<string>> {
   const fileContent: Map<string, JSONObject> = Map(JSON.parse(file));
 
   const dependencies = fileContent.get('dependencies');
-  const devDependencies = fileContent.get('devDependencies');
+  //   const devDependencies = fileContent.get('devDependencies');
   const peerDependencies = fileContent.get('peerDependencies');
 
-  return Object.keys(
-    Object.assign({}, dependencies, devDependencies, peerDependencies)
-  );
+  return Object.keys(Object.assign({}, dependencies, peerDependencies));
 }
 
 async function prepareDependenciesData(from: string): Promise<Array<string>> {
@@ -62,9 +56,7 @@ async function prepareDependenciesData(from: string): Promise<Array<string>> {
   return Promise.all(libData);
 }
 
-async function convertLibDataToImmutable(
-  libData: Promise<Array<string>>
-): Promise<Array<Map<string, JSONObject>>> {
+async function convertLibDataToImmutable(libData: Promise<Array<string>>): Promise<Array<Map<string, JSONObject>>> {
   const listsOfJsons = await libData;
   const arrayOfMappedJsons: Array<Map<string, JSONObject>> = [];
   listsOfJsons.forEach(mappedJson => {
@@ -75,9 +67,9 @@ async function convertLibDataToImmutable(
 }
 
 async function createArrayWithRepoData(from: string): Promise<JSONValue[][]> {
-  const arrayOfMappedJsons: Array<
-    Map<string, JSONObject>
-  > = await convertLibDataToImmutable(prepareDependenciesData(from));
+  const arrayOfMappedJsons: Array<Map<string, JSONObject>> = await convertLibDataToImmutable(
+    prepareDependenciesData(from)
+  );
   const cumulativeData: JSONValue[][] = [];
   arrayOfMappedJsons.forEach(mappedJson => {
     const repoData: JSONValue[] = [];
@@ -133,12 +125,12 @@ function saveMappedDataToFile(mappedData: Map<string, JSONObject>): void {
       if (typeof mappedValue === 'string') {
         stringToAdd = mappedValue;
       } else {
-        stringToAdd = JSON.stringify(mappedValue)
+        stringToAdd = JSON.stringify(mappedValue);
       }
       stringData += stringToAdd + '; ';
-    })
+    });
     stream.write(stringData + '\n');
-  })
+  });
   stream.end();
 }
 
@@ -152,9 +144,7 @@ function getDirectories(): string[] {
 }
 
 function verifyDirectory(directory: string): boolean {
-  const directoryContent: string[] = readdirSync(
-    `${process.cwd()}/${directory}`
-  );
+  const directoryContent: string[] = readdirSync(`${process.cwd()}/${directory}`);
 
   if (directoryContent.indexOf('package.json') !== -1) {
     return true;
@@ -164,9 +154,7 @@ function verifyDirectory(directory: string): boolean {
 }
 
 function getNpmDirectories(directories: string[]): string[] {
-  const npmDirecories = directories.filter(directory =>
-    verifyDirectory(directory)
-  );
+  const npmDirecories = directories.filter(directory => verifyDirectory(directory));
 
   return npmDirecories;
 }
@@ -178,18 +166,17 @@ function createMapWithDependencies(dirs: string[]): Map<string, string[]> {
   let megaMapWithDependencies: Map<string, string[]> = Map({});
 
   dirs.forEach(dir => {
-    const jsonContent: string = readFileSync(
-      `${process.cwd()}/${dir}/package.json`,
-      'utf8'
-    );
+    const jsonContent: string = readFileSync(`${process.cwd()}/${dir}/package.json`, 'utf8');
     const parsedJsonContent = JSON.parse(jsonContent);
-    const arrayOfDependencies: string[] = Object.keys(Object.assign(
-      {},
-      parsedJsonContent.dependencies,
-      parsedJsonContent.devDependencies,
-      parsedJsonContent.peerDependencies
-    ))
-    megaMapWithDependencies = megaMapWithDependencies.set(dir, arrayOfDependencies)
+    const arrayOfDependencies: string[] = Object.keys(
+      Object.assign(
+        {},
+        parsedJsonContent.dependencies,
+        // parsedJsonContent.devDependencies,
+        parsedJsonContent.peerDependencies
+      )
+    );
+    megaMapWithDependencies = megaMapWithDependencies.set(dir, arrayOfDependencies);
   });
 
   return megaMapWithDependencies;
@@ -214,7 +201,10 @@ function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Ma
   appsNames.forEach(app => {
     const dependencies = mappedDirectories.get(app);
     dependencies.forEach(dependency => {
-      const packageJsonContent = readFileSync(`${process.cwd()}/${app}/node_modules/${dependency}/package.json`, 'utf8');
+      const packageJsonContent = readFileSync(
+        `${process.cwd()}/${app}/node_modules/${dependency}/package.json`,
+        'utf8'
+      );
       const parsedPJC = JSON.parse(packageJsonContent);
       const dependencyData: JSONObject = {
         version: parsedPJC.version,
@@ -227,7 +217,7 @@ function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Ma
         usedIn: [app]
       };
       if (megaCSVGenerator.has(dependency)) {
-        const changedDependency: JSONObject = megaCSVGenerator.get(dependency)
+        const changedDependency: JSONObject = megaCSVGenerator.get(dependency);
         if (changedDependency.version < parsedPJC.version) {
           changedDependency.version = parsedPJC.version;
         }
@@ -236,9 +226,21 @@ function getMapOfLibrariesWithData(mappedDirectories: Map<string, string[]>): Ma
       } else {
         megaCSVGenerator = megaCSVGenerator.set(dependency, dependencyData);
       }
-    })
-  })
+    });
+  });
   return megaCSVGenerator;
+}
+
+function goIntoDir(rootDir: string, dirName: string): void {
+  try {
+    execa.sync(`cd ${path.normalize(`${rootDir}/${dirName}`)}`);
+    const { stdout } = execa.sync('pwd');
+    console.log(stdout);
+    const test = execa.sync('git', ['status']);
+    console.log(test);
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 switch (argv._[0]) {
@@ -258,6 +260,12 @@ switch (argv._[0]) {
       console.log(err.message);
     }
     console.log(`It's done!`);
+    break;
+  case 'prepare':
+    const dirs = getDirectories();
+    const { stdout: rootDir } = execa.sync('pwd');
+    console.log(dirs);
+    goIntoDir(rootDir, dirs[0]);
     break;
   default:
     argv.showHelp();
